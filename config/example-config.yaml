@@ -1,0 +1,208 @@
+# Kubernetes Port Forward Manager - Configuration
+#
+# Copy this file to %APPDATA%\portforward\config.yaml
+# (or pass the path as: python -m src.main path/to/config.yaml)
+#
+# Each entry maps to:
+#   kubectl port-forward <resource> <local_port>:<remote_port> -n <namespace>
+#
+# WARNUNG: Einträge mit identischem local_port können nicht gleichzeitig
+# aktiviert sein (nur einer ist jeweils nutzbar).
+#   - Port 8443: krakend, secretary, storekeeper, hybrid-connector,
+#                frps-10019, frps-10020, landlord, tika-extraction, arcbackup
+#   - Port 9443: einvoice, extender, billing-9443
+#   - Port 8444: blobstorage, architect
+
+forwards:
+  # --- Core Services ---
+  - name: "krakend"
+    resource: "deployment/krakend"
+    local_port: 8443
+    remote_port: 8443
+    namespace: one-dm-dev
+
+  - name: "initiator"
+    resource: "deployment/initiator"
+    local_port: 8445
+    remote_port: 8443
+    namespace: one-dm-dev
+
+  - name: "secretary"
+    resource: "deployment/secretary"
+    local_port: 8443
+    remote_port: 8443
+    namespace: one-dm-dev
+
+  - name: "storekeeper"
+    resource: "deployment/storekeeper"
+    local_port: 8443
+    remote_port: 8443
+    namespace: one-dm-dev
+
+  - name: "landlord"
+    resource: "deployment/landlord"
+    local_port: 8443
+    remote_port: 8443
+    namespace: one-dm-dev
+
+  - name: "architect"
+    resource: "deployment/architect"
+    local_port: 8444
+    remote_port: 8443
+    namespace: one-dm-dev
+
+  - name: "hybrid-connector"
+    resource: "deployment/hybrid-connector"
+    local_port: 8443
+    remote_port: 8443
+    namespace: one-dm-dev
+
+  - name: "cel"
+    resource: "deployment/cel"
+    local_port: 9543
+    remote_port: 8443
+    namespace: one-dm-dev
+
+  - name: "arcbackup"
+    resource: "deployment/arcbackup"
+    local_port: 8443
+    remote_port: 8443
+    namespace: one-dm-dev
+
+  # --- Storage ---
+  - name: "mongodb"
+    resource: "pod/mongodb-0"
+    local_port: 37017
+    remote_port: 27017
+    namespace: one-dm-dev
+
+  - name: "blobstorage"
+    resource: "deployment/blobstorage"
+    local_port: 8444
+    remote_port: 8443
+    namespace: one-dm-dev
+
+  - name: "blobstorage-peta (8544)"
+    resource: "deployment/blobstorage-peta"
+    local_port: 8544
+    remote_port: 8443
+    namespace: one-dm-dev
+
+  - name: "blobstorage-peta (8543)"
+    resource: "deployment/blobstorage-peta"
+    local_port: 8543
+    remote_port: 8443
+    namespace: one-dm-dev
+
+  - name: "archive"
+    resource: "pod/archive-0"
+    local_port: 9090
+    remote_port: 9090
+    namespace: one-dm-dev
+
+  - name: "opensearch-coordinate"
+    resource: "deployment/opensearch-coordinate"
+    local_port: 9200
+    remote_port: 9200
+    namespace: one-dm-dev
+
+  # --- Queue / Messaging ---
+  - name: "cloudqueue (HTTP)"
+    resource: "pod/cloudqueue-0"
+    local_port: 8643
+    remote_port: 8443
+    namespace: one-dm-dev
+
+  - name: "cloudqueue (Hazelcast 5701)"
+    resource: "pod/cloudqueue-0"
+    local_port: 5701
+    remote_port: 5701
+    namespace: one-dm-dev
+
+  - name: "cloudqueue (Hazelcast 5702)"
+    resource: "pod/cloudqueue-0"
+    local_port: 5702
+    remote_port: 5702
+    namespace: one-dm-dev
+
+  - name: "cloudqueue (Hazelcast 5703)"
+    resource: "pod/cloudqueue-0"
+    local_port: 5703
+    remote_port: 5703
+    namespace: one-dm-dev
+
+  # --- Adapters ---
+  - name: "adapter-cna (8445)"
+    resource: "deployment/adapter-cna"
+    local_port: 8445
+    remote_port: 8443
+    namespace: one-dm-dev
+
+  - name: "adapter-cna (9080)"
+    resource: "deployment/adapter-cna"
+    local_port: 9080
+    remote_port: 9080
+    namespace: one-dm-dev
+
+  - name: "adapter-eexarchive"
+    resource: "deployment/adapter-eexarchive"
+    local_port: 8446
+    remote_port: 8443
+    namespace: one-dm-dev
+
+  - name: "tika-extraction"
+    resource: "deployment/tika-extraction"
+    local_port: 8443
+    remote_port: 8443
+    namespace: one-dm-dev
+
+  # --- Billing / Invoicing (lokaler Port 9443 – nur einer gleichzeitig!) ---
+  - name: "einvoice"
+    resource: "deployment/einvoice"
+    local_port: 9443
+    remote_port: 8443
+    namespace: one-dm-dev
+
+  - name: "extender"
+    resource: "deployment/extender"
+    local_port: 9443
+    remote_port: 8443
+    namespace: one-dm-dev
+
+# Logging configuration
+# Logs are written asynchronously to avoid blocking the UI
+logging:
+  enabled: true
+  log_dir: "./logs"        # Directory where log files are stored (relative or absolute path)
+  log_file: "portforward.log"  # Log filename (max 5 MB per file, keeps 5 backups)
+
+  - name: "billing (9443)"
+    resource: "deployment/billing"
+    local_port: 9443
+    remote_port: 8443
+    namespace: one-dm-dev
+
+  - name: "billing (5443)"
+    resource: "deployment/billing"
+    local_port: 5443
+    remote_port: 5443
+    namespace: one-dm-dev
+
+  # --- Infrastructure ---
+  - name: "frps (remote 10019)"
+    resource: "deployment/frps"
+    local_port: 8443
+    remote_port: 10019
+    namespace: one-dm-dev
+
+  - name: "frps (remote 10020)"
+    resource: "deployment/frps"
+    local_port: 8443
+    remote_port: 10020
+    namespace: one-dm-dev
+
+  - name: "gotenberg"
+    resource: "deployment/gotenberg"
+    local_port: 4000
+    remote_port: 3000
+    namespace: one-dm-dev
