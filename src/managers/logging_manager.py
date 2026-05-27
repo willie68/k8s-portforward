@@ -85,7 +85,7 @@ class LoggingManager:
         self,
         name: str,
         port: int,
-        path: str,
+        path: Optional[str],
         fail_count: int,
         error_detail: str = "",
         tls: bool = False,
@@ -96,20 +96,23 @@ class LoggingManager:
         Args:
             name: Forward name
             port: Local port being checked
-            path: Health check path
+            path: Health check path (None for gRPC)
             fail_count: Current fail count
             error_detail: Additional error information
-            tls: Whether HTTPS is used (True) or HTTP (False)
+            tls: Whether HTTPS/TLS is used
         """
         if not self.logger:
             return
         
-        scheme = "https" if tls else "http"
-        msg = (
-            f"Health check FAILED for {name}: "
-            f"{scheme}://127.0.0.1:{port}{path} "
-            f"(failure #{fail_count})"
-        )
+        if path is None:
+            # gRPC health check
+            url = f"grpc://127.0.0.1:{port}"
+        else:
+            # HTTP/HTTPS health check
+            scheme = "https" if tls else "http"
+            url = f"{scheme}://127.0.0.1:{port}{path}"
+        
+        msg = f"Health check FAILED for {name}: {url} (failure #{fail_count})"
         if error_detail:
             msg += f" - {error_detail}"
         

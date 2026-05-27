@@ -151,6 +151,12 @@ class ProcessManager:
         with self._lock:
             return self._states.get(name)
 
+    def reset_restart_counts(self) -> None:
+        """Reset restart_count to 0 for all forwards."""
+        with self._lock:
+            for state in self._states.values():
+                state.restart_count = 0
+
     def shutdown(self) -> None:
         """Stop all running processes and terminate the monitor thread."""
         self._running = False
@@ -403,22 +409,39 @@ class ProcessManager:
             for name, state in self._states.items():
                 if state.status != ForwardStatus.RUNNING:
                     continue
-                if not state.entry.health_check_path:
+                # Check if either HTTP or gRPC health check is configured
+                has_http_check = state.entry.health_check_path
+                has_grpc_check = state.entry.health_check_grpc
+                if not (has_http_check or has_grpc_check):
                     continue
                 if state.health_check_in_progress:
                     continue
                 if now - state.last_health_check_at >= HEALTH_CHECK_INTERVAL:
                     state.last_health_check_at = now
                     state.health_check_in_progress = True
-                    tasks.append((name, state.entry.local_port, state.entry.health_check_path, state.entry.health_check_tls))
+                    tasks.append((
+                        name,
+                        state.entry.local_port,
+                        state.entry.health_check_path,
+                        state.entry.health_check_tls,
+                        state.entry.health_check_grpc,
+                    ))
 
-        for name, port, path, tls in tasks:
-            threading.Thread(
-                target=self._do_health_check,
-                args=(name, port, path, tls),
-                daemon=True,
-                name=f"health-{name}",
-            ).start()
+        for name, port, path, tls, is_grpc in tasks:
+            if is_grpc:
+                threading.Thread(
+                    target=self._do_grpc_health_check,
+                    args=(name, port, tls),
+                    daemon=True,
+                    name=f"health-grpc-{name}",
+                ).start()
+            else:
+                threading.Thread(
+                    target=self._do_health_check,
+                    args=(name, port, path, tls),
+                    daemon=True,
+                    name=f"health-{name}",
+                ).start()
 
     def _do_health_check(self, name: str, port: int, path: str, tls: bool) -> None:
         """Perform a single HTTP/HTTPS health check and update the state accordingly."""
@@ -482,6 +505,96 @@ class ProcessManager:
                     if self._logger:
                         self._logger.log_forward_restarting(
                             name, f"Health check failures (max {HEALTH_CHECK_MAX_FAILS} reached)"
+                        )
+
+        self._notify(name)
+
+        if should_restart:
+            self._do_stop(name)
+            time.sleep(RESTART_DELAY)
+            self._do_start(name)
+
+    def _do_grpc_health_check(self, name: str, port: int, tls: bool) -> None:
+        """Perform a single gRPC health check (grpc.health.v1.Health/Check) and update the state accordingly."""
+        ok = False
+        error_detail = ""
+        
+        try:
+            import grpc
+            from grpc_health.v1 import health_pb2, health_pb2_grpc
+        except ImportError as exc:
+            error_detail = f"grpcio packages not installed: {exc}. Install with: pip install grpcio grpcio-health-checking"
+            ok = False
+        else:
+            try:
+                # Create channel with or without TLS
+                target = f"127.0.0.1:{port}"
+                
+                if tls:
+                    # Create a secure channel with certificate verification disabled
+                    credentials = grpc.ssl_channel_credentials()
+                    channel = grpc.secure_channel(target, credentials)
+                else:
+                    # Create an insecure channel
+                    channel = grpc.insecure_channel(target)
+                
+                try:
+                    # Create a stub and call the health check
+                    stub = health_pb2_grpc.HealthStub(channel)
+                    request = health_pb2.HealthCheckRequest(service="")
+                    response = stub.Check(request, timeout=HEALTH_CHECK_TIMEOUT)
+                    
+                    # Check the response status
+                    if response.status == health_pb2.HealthCheckResponse.SERVING:
+                        ok = True
+                    else:
+                        status_name = health_pb2.HealthCheckResponse.ServingStatus.Name(response.status)
+                        error_detail = f"Status: {status_name}"
+                finally:
+                    # Close the channel
+                    channel.close()
+                    
+            except grpc.RpcError as rpc_err:
+                error_detail = f"gRPC error: {rpc_err.details() if hasattr(rpc_err, 'details') else str(rpc_err)}"
+                ok = False
+            except Exception as exc:
+                error_detail = str(exc)
+                ok = False
+
+        should_restart = False
+        with self._lock:
+            state = self._states.get(name)
+            if state is None:
+                return
+            # Mark check as completed regardless of service state.
+            state.health_check_in_progress = False
+            # Use completion timestamp so next check is spaced from end of request.
+            state.last_health_check_at = time.monotonic()
+            if state.status != ForwardStatus.RUNNING:
+                return
+            if ok:
+                state.health_status = "OK"
+                state.health_check_fail_count = 0
+            else:
+                state.health_check_fail_count += 1
+                state.health_status = f"FAIL ({state.health_check_fail_count})"
+                # Log health check failure
+                if self._logger:
+                    self._logger.log_health_check_failure(
+                        name, port, None, state.health_check_fail_count, error_detail, tls
+                    )
+                if (
+                    state.health_check_fail_count >= HEALTH_CHECK_MAX_FAILS
+                    and state.desired_running
+                ):
+                    # Too many consecutive failures – restart the port-forward.
+                    state.health_check_fail_count = 0
+                    state.consecutive_failures = 0
+                    state.restart_count += 1
+                    should_restart = True
+                    if self._logger:
+                        self._logger.log_forward_restarting(
+                            name, f"gRPC health check failures (max {HEALTH_CHECK_MAX_FAILS} reached)"
                         )
 
         self._notify(name)

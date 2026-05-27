@@ -81,11 +81,15 @@ class ForwardDialog(QDialog):
         form.addRow(QLabel(""))
         form.addRow(QLabel("<b>Health Check</b> (optional)"))
 
+        self._health_grpc = QCheckBox("gRPC Health Check verwenden")
+        self._health_grpc.stateChanged.connect(self._on_grpc_toggled)
+        form.addRow("Methode", self._health_grpc)
+
         self._health_path = QLineEdit()
         self._health_path.setPlaceholderText("z.B. /health oder /actuator/health")
         form.addRow("Pfad", self._health_path)
 
-        self._health_tls = QCheckBox("HTTPS verwenden")
+        self._health_tls = QCheckBox("TLS verwenden")
         form.addRow("TLS", self._health_tls)
 
         # Buttons
@@ -96,14 +100,25 @@ class ForwardDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
+    def _on_grpc_toggled(self) -> None:
+        """Enable/disable the health path field based on gRPC checkbox state."""
+        is_grpc = self._health_grpc.isChecked()
+        self._health_path.setEnabled(not is_grpc)
+        if is_grpc:
+            # When switching to gRPC, clear the path field
+            self._health_path.clear()
+
     def _populate(self, entry: ForwardEntry) -> None:
         self._name.setText(entry.name)
         self._resource.setText(entry.resource)
         self._local_port.setText(str(entry.local_port))
         self._remote_port.setText(str(entry.remote_port))
         self._context.setText(entry.context or "")
+        self._health_grpc.setChecked(entry.health_check_grpc)
         self._health_path.setText(entry.health_check_path or "")
         self._health_tls.setChecked(entry.health_check_tls)
+        # Apply the disabled state after populating
+        self._health_path.setEnabled(not entry.health_check_grpc)
 
     # ------------------------------------------------------------------
     # Validation & result
@@ -135,8 +150,14 @@ class ForwardDialog(QDialog):
         elif not (1 <= int(remote_port_str) <= 65535):
             errors.append("Remote Port muss zwischen 1 und 65535 liegen.")
 
+        is_grpc = self._health_grpc.isChecked()
         health_path = self._health_path.text().strip()
-        if health_path and not health_path.startswith("/"):
+        
+        # If gRPC is enabled, path must be empty
+        if is_grpc and health_path:
+            errors.append("Pfad muss leer sein, wenn gRPC Health Check aktiviert ist.")
+        # If gRPC is disabled and path is provided, it must start with /
+        elif not is_grpc and health_path and not health_path.startswith("/"):
             errors.append("Health-Check-Pfad muss mit '/' beginnen.")
 
         if errors:
@@ -152,7 +173,9 @@ class ForwardDialog(QDialog):
     def result_entry(self) -> ForwardEntry:
         """Return the ForwardEntry built from the dialog inputs. Call after exec() == Accepted."""
         context_val = self._context.text().strip() or None
-        health_path = self._health_path.text().strip() or None
+        is_grpc = self._health_grpc.isChecked()
+        # If gRPC is enabled, health_path should be None
+        health_path = None if is_grpc else (self._health_path.text().strip() or None)
         return ForwardEntry(
             name=self._name.text().strip(),
             resource=self._resource.text().strip(),
@@ -161,4 +184,5 @@ class ForwardDialog(QDialog):
             context=context_val,
             health_check_path=health_path,
             health_check_tls=self._health_tls.isChecked(),
+            health_check_grpc=is_grpc,
         )

@@ -256,6 +256,13 @@ class MainWindow(QMainWindow):
         btn_stop_all.clicked.connect(self._on_stop_all)
         toolbar.addWidget(btn_stop_all)
 
+        btn_restart_all = _icon_btn(
+            QStyle.StandardPixmap.SP_BrowserReload,
+            "Alle Forwards neu starten und Restart-Counter zurücksetzen",
+        )
+        btn_restart_all.clicked.connect(self._on_restart_all)
+        toolbar.addWidget(btn_restart_all)
+
         btn_quit = _icon_btn(
             QStyle.StandardPixmap.SP_TitleBarCloseButton,
             "Alle Forwards stoppen und beenden",
@@ -829,6 +836,37 @@ class MainWindow(QMainWindow):
         self._profile_combo.setCurrentIndex(0)
         self._profile_combo.blockSignals(False)
         self._rebuild_table()  # Re-sort after deactivating all
+
+    def _on_restart_all(self) -> None:
+        """Restart all currently active forwards and reset their restart counters."""
+        if not self._config:
+            return
+        
+        # Collect all currently active forwards
+        active_entries = []
+        for entry in self._config.forwards:
+            state = self._process_manager.get_state(entry.name)
+            if state and state.desired_running:
+                active_entries.append(entry)
+        
+        if not active_entries:
+            return
+        
+        self._table.blockSignals(True)
+        
+        # Stop all active forwards
+        for entry in active_entries:
+            self._process_manager.set_desired(entry, False)
+        
+        # Reset restart counters for all forwards
+        self._process_manager.reset_restart_counts()
+        
+        # Start all previously active forwards again
+        for entry in active_entries:
+            self._process_manager.set_desired(entry, True)
+        
+        self._table.blockSignals(False)
+        self._rebuild_table()  # Re-sort after restarting
 
     # ------------------------------------------------------------------
     # Profile management

@@ -13,6 +13,7 @@ class ForwardEntry(BaseModel):
     context: Optional[str] = None  # reserved for future multi-cluster support
     health_check_path: Optional[str] = None  # e.g. "/health" – checked every 30 s when running
     health_check_tls: bool = False            # True → https, False → http
+    health_check_grpc: bool = False           # True → gRPC health check (grpc.health.v1.Health/Check), False → HTTP
 
     @field_validator("local_port", "remote_port")
     @classmethod
