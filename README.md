@@ -6,7 +6,9 @@ Desktop utility (PyQt6) to manage multiple `kubectl port-forward` processes with
 
 - Manage multiple Kubernetes port-forwards from a single UI
 - Start/stop forwards individually or as saved profiles
-- Health checks per service (`http` or `https`)
+- Health checks per service
+  - HTTP/HTTPS (`http` or `https`)
+  - **gRPC** (via `grpc.health.v1.Health/Check`)
 - Automatic restart after repeated health check failures
 - Rotating log file output with an integrated log viewer
 - System tray support (minimize-to-tray behavior)
@@ -25,6 +27,8 @@ python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 ```
+
+**Note:** If using gRPC health checks, ensure `grpcio` and `grpcio-health-checking` are installed (already included in `requirements.txt`).
 
 ## Run
 
@@ -55,19 +59,29 @@ Each forward entry supports:
 - `local_port`: local port on your machine
 - `remote_port`: remote port in the cluster target
 - `context` (optional): kube context passed to `kubectl`
-- `health_check_path` (optional): path polled every 30s while running
-- `health_check_tls` (optional): `true` for HTTPS health checks
+- `health_check_path` (optional): HTTP path polled every 30s while running (e.g. `/health`)
+- `health_check_grpc` (optional): `true` to enable gRPC health check (`grpc.health.v1.Health/Check`) instead of HTTP
+- `health_check_tls` (optional): `true` for HTTPS/TLS (applies to both HTTP and gRPC health checks)
 
 Example:
 
 ```yaml
 forwards:
+  # HTTP health check example
   - name: "landlord"
     resource: "deployment/landlord"
     local_port: 9543
     remote_port: 8443
     health_check_path: "/health/health"
     health_check_tls: true
+
+  # gRPC health check example
+  - name: "my-grpc-service"
+    resource: "deployment/my-grpc-service"
+    local_port: 5000
+    remote_port: 50051
+    health_check_grpc: true
+    health_check_tls: false
 ```
 
 ## Logging
